@@ -58,7 +58,11 @@ function ContactPage() {
                   msg: String(fd.get("msg") ?? ""),
                 };
 
-                const res = await fetch("/api/send-email", {
+                const apiUrl = import.meta.env.DEV 
+                  ? "/api/send-email" 
+                  : `${window.location.origin}/api/send-email`;
+                
+                const res = await fetch(apiUrl, {
                   method: "POST",
                   headers: { "content-type": "application/json" },
                   body: JSON.stringify(payload),
