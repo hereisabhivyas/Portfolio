@@ -14,6 +14,20 @@ function readRequestBody(req: any) {
   });
 }
 
+function buildHeaders(headers: any) {
+  const normalized = new Headers();
+
+  for (const [key, value] of Object.entries(headers ?? {})) {
+    if (Array.isArray(value)) {
+      normalized.set(key, value.join(", "));
+    } else if (typeof value === "string") {
+      normalized.set(key, value);
+    }
+  }
+
+  return normalized;
+}
+
 export default async function handler(req: any, res: any) {
   try {
     const protocol = req.headers["x-forwarded-proto"] || "http";
@@ -22,7 +36,7 @@ export default async function handler(req: any, res: any) {
 
     const requestInit: RequestInit = {
       method: req.method,
-      headers: req.headers,
+      headers: buildHeaders(req.headers),
     };
 
     if (req.method !== "GET" && req.method !== "HEAD") {
