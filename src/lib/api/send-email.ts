@@ -11,6 +11,10 @@ function toText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function toSecret(value: unknown) {
+  return toText(value).replace(/\s+/g, "");
+}
+
 function jsonResponse(body: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(body), {
     ...init,
@@ -46,7 +50,7 @@ export async function handleSendEmailRequest(request: Request) {
   const smtpPort = Number.parseInt(toText(process.env.SMTP_PORT) || "0", 10);
   const smtpSecure = toText(process.env.SMTP_SECURE).toLowerCase() === "true";
   const smtpUser = toText(process.env.SMTP_USER);
-  const smtpPass = toText(process.env.SMTP_PASS);
+  const smtpPass = toSecret(process.env.SMTP_PASS);
   const contactTo = toText(process.env.RECEIVER_EMAIL) || toText(process.env.CONTACT_TO) || smtpUser;
   const contactFrom = toText(process.env.CONTACT_FROM) || smtpUser;
 
@@ -70,19 +74,29 @@ export async function handleSendEmailRequest(request: Request) {
     },
   });
 
-  await transporter.sendMail({
-    from: contactFrom,
-    to: contactTo,
-    replyTo: email,
-    subject: `Portfolio contact from ${name}`,
-    text: [
-      `Name: ${name}`,
-      `Email: ${email}`,
-      `Project type: ${biz || "Not provided"}`,
-      "",
-      msg,
-    ].join("\n"),
-  });
+  try {
+    await transporter.sendMail({
+      from: contactFrom,
+      to: contactTo,
+      replyTo: email,
+      subject: `Portfolio contact from ${name}`,
+      text: [
+        `Name: ${name}`,
+        `Email: ${email}`,
+        `Project type: ${biz || "Not provided"}`,
+        "",
+        msg,
+      ].join("\n"),
+    });
+  } catch (error) {
+    console.error("SMTP sendMail failed:", error);
+    return jsonResponse(
+      {
+        error: "Email delivery failed. Check SMTP credentials and Vercel env vars.",
+      },
+      { status: 502 },
+    );
+  }
 
   return jsonResponse({ ok: true });
 }
