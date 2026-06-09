@@ -1,8 +1,9 @@
 // Vercel Serverless Function: POST /api/send-email
-// Requires env vars on Vercel:
-//   RESEND_API_KEY      - your Resend API key
-//   CONTACT_TO_EMAIL    - (optional) destination inbox, defaults to abhivyas571@gmail.com
-//   CONTACT_FROM_EMAIL  - (optional) verified sender, defaults to onboarding@resend.dev
+// Uses SMTP env vars on Vercel:
+//   SMTP_HOST, SMTP_PORT, SMTP_SECURE ("true"/"false"), SMTP_USER, SMTP_PASS
+//   RECEIVER_EMAIL - destination inbox
+
+import nodemailer from "nodemailer";
 
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") {
@@ -25,14 +26,34 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    const apiKey = process.env.RESEND_API_KEY;
-    if (!apiKey) {
-      console.error("RESEND_API_KEY is not set");
+    const {
+      SMTP_HOST,
+      SMTP_PORT,
+      SMTP_SECURE,
+      SMTP_USER,
+      SMTP_PASS,
+      RECEIVER_EMAIL,
+    } = process.env;
+
+    if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) {
+      console.error("SMTP env vars are not fully set");
       return res.status(500).json({ error: "Email service is not configured" });
     }
 
-    const to = process.env.CONTACT_TO_EMAIL || "abhivyas571@gmail.com";
-    const from = process.env.CONTACT_FROM_EMAIL || "Portfolio <onboarding@resend.dev>";
+    const port = Number(SMTP_PORT);
+    const secure =
+      typeof SMTP_SECURE === "string"
+        ? SMTP_SECURE.toLowerCase() === "true"
+        : port === 465;
+
+    const transporter = nodemailer.createTransport({
+      host: SMTP_HOST,
+      port,
+      secure,
+      auth: { user: SMTP_USER, pass: SMTP_PASS },
+    });
+
+    const to = RECEIVER_EMAIL || SMTP_USER;
 
     const html = `
       <h2>New portfolio contact</h2>
@@ -43,30 +64,16 @@ export default async function handler(req, res) {
       <pre style="white-space:pre-wrap;font-family:inherit">${escapeHtml(msg)}</pre>
     `;
 
-    const r = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from,
-        to: [to],
-        reply_to: email,
-        subject: `Portfolio inquiry from ${name}`,
-        html,
-      }),
+    const info = await transporter.sendMail({
+      from: `"Portfolio Contact" <${SMTP_USER}>`,
+      to,
+      replyTo: email,
+      subject: `Portfolio inquiry from ${name}`,
+      html,
+      text: `Name: ${name}\nEmail: ${email}\nProject: ${biz}\n\n${msg}`,
     });
 
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      console.error("Resend error", r.status, data);
-      return res
-        .status(500)
-        .json({ error: data?.message || "Failed to send email" });
-    }
-
-    return res.status(200).json({ ok: true, id: data?.id });
+    return res.status(200).json({ ok: true, id: info.messageId });
   } catch (err) {
     console.error("send-email handler error", err);
     return res.status(500).json({ error: err?.message || "Server error" });
